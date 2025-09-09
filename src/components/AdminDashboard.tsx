@@ -394,6 +394,17 @@ export default function AdminDashboard({ user, profile, onLogout }: AdminDashboa
   const handleApproveUser = async (pendingId: string) => {
     setProcessingApproval(pendingId);
     try {
+      // Récupérer les informations de l'utilisateur en attente
+      const { data: pendingUser, error: fetchError } = await supabase
+        .from('pending_users')
+        .select('*')
+        .eq('id', pendingId)
+        .single();
+
+      if (fetchError || !pendingUser) {
+        throw new Error('Utilisateur en attente non trouvé');
+      }
+
       // Get current session for authentication
       const { data: session } = await supabase.auth.getSession();
       
@@ -411,6 +422,21 @@ export default function AdminDashboard({ user, profile, onLogout }: AdminDashboa
 
       if (error) throw error;
       if (!data.success) throw new Error(data.error || 'Erreur lors de l\'approbation');
+
+      // Envoyer le code OTP via le microservice
+      try {
+        await fetch('http://localhost:3000/send-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: pendingUser.email,
+            username: pendingUser.username
+          })
+        });
+      } catch (otpError) {
+        console.warn('Erreur lors de l\'envoi OTP via microservice:', otpError);
+        // Ne pas bloquer l'approbation si l'OTP échoue
+      }
 
       alert(`✅ ${data.message}\n\n📧 Un email avec le code de passerelle (${data.gatewayCode}) a été envoyé à l'utilisateur.\n\n🔑 L'utilisateur peut maintenant finaliser son inscription avec ce code.`);
       await fetchDashboardData();

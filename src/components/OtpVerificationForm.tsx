@@ -87,8 +87,8 @@ export default function OtpVerificationForm({ email, onSuccess, onBackToLogin }:
     setMessage(null);
 
     try {
-      // Vérifier le code OTP via le microservice
-      const response = await fetch('http://localhost:3001/verify-otp', {
+      // Vérifier le code OTP via le microservice OTP
+      const response = await fetch('http://localhost:3000/verify-otp', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -102,7 +102,7 @@ export default function OtpVerificationForm({ email, onSuccess, onBackToLogin }:
       const data = await response.json();
 
       if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Code OTP invalide');
+        throw new Error(data.message || 'Code OTP invalide');
       }
 
       // Récupérer les informations de l'utilisateur approuvé
@@ -136,7 +136,7 @@ export default function OtpVerificationForm({ email, onSuccess, onBackToLogin }:
       console.error('Erreur lors de la vérification OTP:', error);
       setMessage({ 
         type: 'error', 
-        text: error.message || 'Code invalide ou expiré' 
+        text: error.message || 'Code invalide, expiré ou déjà utilisé' 
       });
       
       // Réinitialiser le formulaire en cas d'erreur
@@ -154,11 +154,40 @@ export default function OtpVerificationForm({ email, onSuccess, onBackToLogin }:
     setMessage(null);
 
     try {
-      // Demander un nouveau code (cette fonctionnalité nécessiterait une modification du système)
-      setMessage({ 
-        type: 'error', 
-        text: 'Veuillez contacter l\'administrateur pour un nouveau code' 
+      // Demander un nouveau code via le microservice
+      const response = await fetch('http://localhost:3000/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: email,
+          username: 'Utilisateur'
+        })
       });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setMessage({ 
+          type: 'success', 
+          text: 'Nouveau code envoyé avec succès!' 
+        });
+        setCanResend(false);
+        setCountdown(60);
+        
+        // Redémarrer le countdown
+        const timer = setInterval(() => {
+          setCountdown((prev) => {
+            if (prev <= 1) {
+              setCanResend(true);
+              clearInterval(timer);
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+      } else {
+        throw new Error(data.message || 'Erreur lors du renvoi');
+      }
     } catch (error: any) {
       setMessage({ 
         type: 'error', 
