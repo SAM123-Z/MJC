@@ -794,7 +794,7 @@ export default function AdminDashboard({ user, profile, onLogout }: AdminDashboa
       case 'settings':
         return <div className="p-6 bg-white rounded-xl">Paramètres (En développement)</div>;
       default:
-        return renderDashboardOverview();
+        return <RegistrationRequestsManager user={user} />;
     }
   };
 
