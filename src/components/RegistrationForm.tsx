@@ -164,12 +164,16 @@ export default function RegistrationForm({ onBackToLogin }: RegistrationFormProp
 
       if (error) throw error;
 
+      // Vérifier que les données ont été retournées
+      if (!pendingUserData) {
+        throw new Error('Erreur lors de la création de la demande: données non retournées');
+      }
       // Envoyer notification immédiate à l'admin
       try {
         const selectedOption = userTypeOptions.find(option => option.value === selectedUserType);
         
         // Envoyer notification à l'admin via le microservice OTP
-        await fetch('http://localhost:3000/send-admin-notification', {
+        await fetch('http://localhost:3001/send-admin-notification', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
