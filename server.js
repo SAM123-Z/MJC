@@ -339,6 +339,60 @@ if (process.env.NODE_ENV !== 'production') {
   });
 }
 
+// --------- Route racine avec documentation ----------
+app.get("/", (req, res) => {
+  res.json({
+    service: "MINJEC OTP Microservice",
+    version: "1.0.0",
+    status: "OK",
+    description: "Service d'authentification par code OTP à 4 chiffres",
+    endpoints: {
+      "POST /send-otp": {
+        description: "Envoie un code OTP par email",
+        body: {
+          email: "string (requis)",
+          username: "string (optionnel)"
+        },
+        example: {
+          email: "user@example.com",
+          username: "John Doe"
+        }
+      },
+      "POST /verify-otp": {
+        description: "Vérifie un code OTP",
+        body: {
+          email: "string (requis)",
+          otp: "string (requis, 4 chiffres)"
+        },
+        example: {
+          email: "user@example.com",
+          otp: "1234"
+        }
+      },
+      "POST /send-admin-notification": {
+        description: "Envoie une notification à l'admin",
+        body: {
+          type: "string",
+          adminEmail: "string",
+          userData: "object"
+        }
+      },
+      "GET /health": {
+        description: "État de santé du service"
+      },
+      "GET /stats": {
+        description: "Statistiques des OTP actifs (développement uniquement)"
+      }
+    },
+    usage: {
+      "1": "Démarrer le service: npm run otp-service",
+      "2": "Tester avec Postman ou curl",
+      "3": "Configurer Gmail dans .env"
+    },
+    contact: "admin@minjec.gov.dj"
+  });
+});
+
 // --------- 6. Gestion des erreurs ----------
 app.use((err, req, res, next) => {
   console.error("❌ Erreur non gérée:", err);
