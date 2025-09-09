@@ -350,9 +350,17 @@ app.use((err, req, res, next) => {
 
 // --------- 7. Gestion des routes non trouvées ----------
 app.use("*", (req, res) => {
+  console.log(`❌ Route non trouvée: ${req.method} ${req.originalUrl}`);
   res.status(404).json({
     success: false,
-    message: "Endpoint non trouvé"
+    message: `Endpoint non trouvé: ${req.method} ${req.originalUrl}`,
+    availableEndpoints: [
+      "POST /send-otp",
+      "POST /verify-otp", 
+      "POST /send-admin-notification",
+      "GET /health",
+      "GET /stats"
+    ]
   });
 });
 
@@ -362,6 +370,12 @@ app.listen(PORT, () => {
   console.log(`📧 Service email: ${process.env.EMAIL_USER ? 'Configuré' : 'Non configuré'}`);
   console.log(`🌍 Environnement: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+  console.log(`📋 Endpoints disponibles:`);
+  console.log(`   POST ${PORT}/send-otp`);
+  console.log(`   POST ${PORT}/verify-otp`);
+  console.log(`   POST ${PORT}/send-admin-notification`);
+  console.log(`   GET  ${PORT}/health`);
+  console.log(`   GET  ${PORT}/stats`);
 });
 
 // Gestion propre de l'arrêt
