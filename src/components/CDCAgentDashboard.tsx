@@ -33,7 +33,10 @@ import {
   Save,
   Target,
   Award,
-  BarChart3
+  BarChart3,
+  ChevronRight,
+  Star,
+  Zap
 } from 'lucide-react';
 
 interface CDCAgentDashboardProps {
@@ -88,6 +91,21 @@ interface Report {
   submitted_at?: string;
 }
 
+interface Association {
+  id: string;
+  association_name: string;
+  registration_number: string;
+  activity_sector: string;
+  address?: string;
+  phone?: string;
+  status: string;
+  registration_date: string;
+  user_profiles?: {
+    username: string;
+    user_id_or_registration: string;
+  };
+}
+
 interface DashboardStats {
   totalMissions: number;
   completedMissions: number;
@@ -97,25 +115,32 @@ interface DashboardStats {
   totalReports: number;
   pendingReports: number;
   thisMonthActivities: number;
+  localAssociations: number;
+  approvedAssociations: number;
 }
 
 const sidebarItems = [
-  { id: 'dashboard', label: 'Tableau de bord', icon: Home },
+  { id: 'dashboard', label: 'Accueil', icon: Home },
   { id: 'missions', label: 'Mes Missions', icon: Target },
   { id: 'activities', label: 'Activités Locales', icon: Activity },
-  { id: 'reports', label: 'Mes Rapports', icon: FileText },
+  { id: 'associations', label: 'Associations', icon: Building },
+  { id: 'reports', label: 'Rapports', icon: FileText },
 ];
 
 const statusConfig = {
-  assigned: { label: 'Assignée', color: 'text-blue-600', bgColor: 'bg-blue-50' },
-  in_progress: { label: 'En cours', color: 'text-yellow-600', bgColor: 'bg-yellow-50' },
-  completed: { label: 'Terminée', color: 'text-green-600', bgColor: 'bg-green-50' },
-  cancelled: { label: 'Annulée', color: 'text-red-600', bgColor: 'bg-red-50' },
-  planned: { label: 'Planifiée', color: 'text-blue-600', bgColor: 'bg-blue-50' },
-  ongoing: { label: 'En cours', color: 'text-yellow-600', bgColor: 'bg-yellow-50' },
-  draft: { label: 'Brouillon', color: 'text-gray-600', bgColor: 'bg-gray-50' },
-  submitted: { label: 'Soumis', color: 'text-blue-600', bgColor: 'bg-blue-50' },
-  reviewed: { label: 'Révisé', color: 'text-green-600', bgColor: 'bg-green-50' },
+  assigned: { label: 'Assignée', color: 'text-blue-600', bgColor: 'bg-blue-50', icon: Clock },
+  in_progress: { label: 'En cours', color: 'text-yellow-600', bgColor: 'bg-yellow-50', icon: Zap },
+  completed: { label: 'Terminée', color: 'text-green-600', bgColor: 'bg-green-50', icon: CheckCircle },
+  cancelled: { label: 'Annulée', color: 'text-red-600', bgColor: 'bg-red-50', icon: X },
+  planned: { label: 'Planifiée', color: 'text-blue-600', bgColor: 'bg-blue-50', icon: Calendar },
+  ongoing: { label: 'En cours', color: 'text-yellow-600', bgColor: 'bg-yellow-50', icon: Zap },
+  draft: { label: 'Brouillon', color: 'text-gray-600', bgColor: 'bg-gray-50', icon: Edit },
+  submitted: { label: 'Soumis', color: 'text-blue-600', bgColor: 'bg-blue-50', icon: Send },
+  reviewed: { label: 'Révisé', color: 'text-green-600', bgColor: 'bg-green-50', icon: CheckCircle },
+  pending: { label: 'En attente', color: 'text-yellow-600', bgColor: 'bg-yellow-50', icon: Clock },
+  approved: { label: 'Approuvée', color: 'text-green-600', bgColor: 'bg-green-50', icon: CheckCircle },
+  rejected: { label: 'Rejetée', color: 'text-red-600', bgColor: 'bg-red-50', icon: X },
+  suspended: { label: 'Suspendue', color: 'text-orange-600', bgColor: 'bg-orange-50', icon: AlertCircle },
 };
 
 const priorityConfig = {
@@ -154,10 +179,13 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
     totalReports: 0,
     pendingReports: 0,
     thisMonthActivities: 0,
+    localAssociations: 0,
+    approvedAssociations: 0,
   });
   const [missions, setMissions] = useState<Mission[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
+  const [associations, setAssociations] = useState<Association[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [modalType, setModalType] = useState<'activity' | 'report'>('activity');
   const [editingItem, setEditingItem] = useState<any>(null);
@@ -169,11 +197,12 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
   const fetchAgentData = async () => {
     try {
       setLoading(true);
+      await fetchAgentInfo();
       await Promise.all([
-        fetchAgentInfo(),
         fetchMissions(),
         fetchActivities(),
         fetchReports(),
+        fetchAssociations(),
       ]);
       calculateStats();
     } catch (error) {
@@ -190,7 +219,9 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
       .eq('user_id', user.id)
       .maybeSingle();
     
-    if (data) setAgentInfo(data);
+    if (data) {
+      setAgentInfo(data);
+    }
   };
 
   const fetchMissions = async () => {
@@ -238,6 +269,33 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
     if (data) setReports(data);
   };
 
+  const fetchAssociations = async () => {
+    if (!agentInfo) return;
+    
+    // Filtrer les associations par département/région de l'agent
+    const agentRegion = agentInfo.department.split(' - ')[0]; // Extraire la région du département
+    
+    const { data } = await supabase
+      .from('associations')
+      .select(`
+        *,
+        user_profiles (username, user_id_or_registration)
+      `)
+      .order('created_at', { ascending: false });
+    
+    if (data) {
+      // Filtrer les associations locales (même région que l'agent)
+      const localAssociations = data.filter(assoc => {
+        // Logique de filtrage basée sur la région/département
+        // Pour l'instant, on affiche toutes les associations
+        // Dans une implémentation réelle, on filtrerait par région
+        return true;
+      });
+      
+      setAssociations(localAssociations);
+    }
+  };
+
   const calculateStats = () => {
     const now = new Date();
     const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -251,6 +309,8 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
       totalReports: reports.length,
       pendingReports: reports.filter(r => r.status === 'draft').length,
       thisMonthActivities: activities.filter(a => new Date(a.created_at) >= thisMonth).length,
+      localAssociations: associations.length,
+      approvedAssociations: associations.filter(a => a.status === 'approved').length,
     });
   };
 
@@ -279,6 +339,7 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
       if (error) throw error;
 
       await fetchActivities();
+      calculateStats();
       setShowCreateModal(false);
       alert('Activité créée avec succès!');
     } catch (error: any) {
@@ -306,6 +367,7 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
       if (error) throw error;
 
       await fetchActivities();
+      calculateStats();
       setEditingItem(null);
       alert('Activité mise à jour avec succès!');
     } catch (error: any) {
@@ -333,6 +395,7 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
       if (error) throw error;
 
       await fetchReports();
+      calculateStats();
       setShowCreateModal(false);
       alert('Rapport créé avec succès!');
     } catch (error: any) {
@@ -354,7 +417,8 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
       if (error) throw error;
 
       await fetchReports();
-      alert('Rapport soumis avec succès!');
+      calculateStats();
+      alert('Rapport soumis avec succès à l\'administration!');
     } catch (error: any) {
       console.error('Error submitting report:', error);
       alert('Erreur lors de la soumission: ' + error.message);
@@ -371,6 +435,7 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
       if (error) throw error;
 
       await fetchMissions();
+      calculateStats();
       alert('Statut de la mission mis à jour!');
     } catch (error: any) {
       console.error('Error updating mission:', error);
@@ -389,7 +454,7 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
           <div>
             <h2 className="text-2xl font-bold text-gray-900">Agent CDC - {profile.username}</h2>
             <p className="text-gray-600">Matricule: {agentInfo?.matricule}</p>
-            <p className="text-sm text-gray-500">Département: {agentInfo?.department}</p>
+            <p className="text-sm text-gray-500">Centre: {agentInfo?.department}</p>
           </div>
         </div>
         
@@ -420,7 +485,7 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Missions Totales</p>
+              <p className="text-sm font-medium text-gray-600">Missions</p>
               <p className="text-3xl font-bold text-gray-900">{stats.totalMissions}</p>
               <p className="text-sm text-green-600">{stats.completedMissions} terminées</p>
             </div>
@@ -446,12 +511,12 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Rapports</p>
-              <p className="text-3xl font-bold text-gray-900">{stats.totalReports}</p>
-              <p className="text-sm text-yellow-600">{stats.pendingReports} en attente</p>
+              <p className="text-sm font-medium text-gray-600">Associations</p>
+              <p className="text-3xl font-bold text-gray-900">{stats.localAssociations}</p>
+              <p className="text-sm text-green-600">{stats.approvedAssociations} approuvées</p>
             </div>
             <div className="flex items-center justify-center w-12 h-12 bg-purple-50 rounded-lg">
-              <FileText className="w-6 h-6 text-purple-600" />
+              <Building className="w-6 h-6 text-purple-600" />
             </div>
           </div>
         </div>
@@ -459,55 +524,79 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Ce Mois</p>
-              <p className="text-3xl font-bold text-gray-900">{stats.thisMonthActivities}</p>
-              <p className="text-sm text-green-600">Activités créées</p>
+              <p className="text-sm font-medium text-gray-600">Rapports</p>
+              <p className="text-3xl font-bold text-gray-900">{stats.totalReports}</p>
+              <p className="text-sm text-yellow-600">{stats.pendingReports} en attente</p>
             </div>
             <div className="flex items-center justify-center w-12 h-12 bg-yellow-50 rounded-lg">
-              <BarChart3 className="w-6 h-6 text-yellow-600" />
+              <FileText className="w-6 h-6 text-yellow-600" />
             </div>
           </div>
         </div>
       </div>
 
-      {/* Recent Missions */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-900">Missions Récentes</h3>
-          <button
-            onClick={() => setActiveTab('missions')}
-            className="text-blue-600 hover:text-blue-700 text-sm font-medium"
-          >
-            Voir tout
-          </button>
+      {/* Quick Actions */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Actions Rapides</h3>
+          <div className="space-y-3">
+            <button
+              onClick={() => {
+                setModalType('activity');
+                setEditingItem(null);
+                setShowCreateModal(true);
+              }}
+              className="w-full flex items-center gap-3 p-3 bg-green-50 hover:bg-green-100 rounded-lg transition-colors"
+            >
+              <Plus className="w-5 h-5 text-green-600" />
+              <span className="text-green-700 font-medium">Créer une activité</span>
+            </button>
+            <button
+              onClick={() => {
+                setModalType('report');
+                setEditingItem(null);
+                setShowCreateModal(true);
+              }}
+              className="w-full flex items-center gap-3 p-3 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+            >
+              <FileText className="w-5 h-5 text-blue-600" />
+              <span className="text-blue-700 font-medium">Rédiger un rapport</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('associations')}
+              className="w-full flex items-center gap-3 p-3 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors"
+            >
+              <Building className="w-5 h-5 text-purple-600" />
+              <span className="text-purple-700 font-medium">Voir les associations</span>
+            </button>
+          </div>
         </div>
-        <div className="p-6">
-          {missions.length === 0 ? (
-            <p className="text-gray-500 text-center py-8">Aucune mission assignée</p>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Missions Urgentes</h3>
+          {missions.filter(m => m.priority === 'urgent' && m.status !== 'completed').length === 0 ? (
+            <p className="text-gray-500 text-center py-8">Aucune mission urgente</p>
           ) : (
-            <div className="space-y-4">
-              {missions.slice(0, 3).map((mission) => (
-                <div key={mission.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                  <div className="flex-1">
-                    <h4 className="font-medium text-gray-900">{mission.title}</h4>
-                    <p className="text-sm text-gray-600 mt-1">{mission.description}</p>
-                    <div className="flex items-center gap-4 mt-2">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusConfig[mission.status]?.bgColor} ${statusConfig[mission.status]?.color}`}>
+            <div className="space-y-3">
+              {missions
+                .filter(m => m.priority === 'urgent' && m.status !== 'completed')
+                .slice(0, 3)
+                .map((mission) => (
+                  <div key={mission.id} className="p-3 bg-red-50 rounded-lg border border-red-200">
+                    <h4 className="font-medium text-red-900">{mission.title}</h4>
+                    <p className="text-sm text-red-700 mt-1">{mission.description}</p>
+                    <div className="flex items-center justify-between mt-2">
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${statusConfig[mission.status]?.bgColor} ${statusConfig[mission.status]?.color}`}>
                         {statusConfig[mission.status]?.label}
                       </span>
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${priorityConfig[mission.priority]?.bgColor} ${priorityConfig[mission.priority]?.color}`}>
-                        {priorityConfig[mission.priority]?.label}
-                      </span>
                       {mission.due_date && (
-                        <span className="text-xs text-gray-500 flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          {new Date(mission.due_date).toLocaleDateString('fr-FR')}
+                        <span className="text-xs text-red-600">
+                          Échéance: {new Date(mission.due_date).toLocaleDateString('fr-FR')}
                         </span>
                       )}
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
             </div>
           )}
         </div>
@@ -519,9 +608,10 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
           <h3 className="text-lg font-semibold text-gray-900">Activités Récentes</h3>
           <button
             onClick={() => setActiveTab('activities')}
-            className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+            className="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center gap-1"
           >
             Voir tout
+            <ChevronRight className="w-4 h-4" />
           </button>
         </div>
         <div className="p-6">
@@ -548,6 +638,9 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
                       </span>
                     </div>
                   </div>
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusConfig[activity.status]?.bgColor} ${statusConfig[activity.status]?.color}`}>
+                    {statusConfig[activity.status]?.label}
+                  </span>
                 </div>
               ))}
             </div>
@@ -560,8 +653,11 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
   const renderMissions = () => (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <h2 className="text-2xl font-bold text-gray-900">Mes Missions</h2>
-        <div className="text-sm text-gray-600">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Mes Missions</h2>
+          <p className="text-gray-600">Missions assignées par l'administration</p>
+        </div>
+        <div className="text-sm text-gray-600 bg-gray-100 px-3 py-2 rounded-lg">
           {stats.totalMissions} missions • {stats.completedMissions} terminées • {stats.inProgressMissions} en cours
         </div>
       </div>
@@ -572,66 +668,69 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
             <div className="text-center py-12">
               <Target className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <p className="text-gray-500">Aucune mission assignée</p>
+              <p className="text-sm text-gray-400 mt-2">Les missions vous seront assignées par l'administration</p>
             </div>
           ) : (
             <div className="space-y-4">
               {missions.map((mission) => (
-                <div key={mission.id} className="border border-gray-200 rounded-lg p-6">
+                <div key={mission.id} className="border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-gray-900">{mission.title}</h3>
-                      <p className="text-gray-600 mt-2">{mission.description}</p>
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="text-lg font-semibold text-gray-900">{mission.title}</h3>
+                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${priorityConfig[mission.priority]?.bgColor} ${priorityConfig[mission.priority]?.color}`}>
+                          {priorityConfig[mission.priority]?.label}
+                        </span>
+                      </div>
+                      <p className="text-gray-600 mb-3">{mission.description}</p>
                       {mission.assigned_by && (
-                        <p className="text-sm text-gray-500 mt-1">
-                          Assignée par: {mission.assigned_by.username}
+                        <p className="text-sm text-gray-500 mb-2">
+                          Assignée par: <span className="font-medium">{mission.assigned_by.username}</span>
                         </p>
                       )}
+                      <div className="flex items-center gap-4 text-sm text-gray-500">
+                        {mission.due_date && (
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-4 h-4" />
+                            Échéance: {new Date(mission.due_date).toLocaleDateString('fr-FR')}
+                          </span>
+                        )}
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-4 h-4" />
+                          Créée le {new Date(mission.created_at).toLocaleDateString('fr-FR')}
+                        </span>
+                      </div>
                     </div>
                     <div className="flex items-center gap-2 ml-4">
                       <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${statusConfig[mission.status]?.bgColor} ${statusConfig[mission.status]?.color}`}>
+                        {React.createElement(statusConfig[mission.status]?.icon, { className: "w-4 h-4 mr-1" })}
                         {statusConfig[mission.status]?.label}
-                      </span>
-                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${priorityConfig[mission.priority]?.bgColor} ${priorityConfig[mission.priority]?.color}`}>
-                        {priorityConfig[mission.priority]?.label}
                       </span>
                     </div>
                   </div>
                   
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4 text-sm text-gray-500">
-                      {mission.due_date && (
-                        <span className="flex items-center gap-1">
-                          <Calendar className="w-4 h-4" />
-                          Échéance: {new Date(mission.due_date).toLocaleDateString('fr-FR')}
-                        </span>
+                  {mission.status !== 'completed' && mission.status !== 'cancelled' && (
+                    <div className="flex items-center gap-2 pt-4 border-t border-gray-200">
+                      {mission.status === 'assigned' && (
+                        <button
+                          onClick={() => handleUpdateMissionStatus(mission.id, 'in_progress')}
+                          className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
+                        >
+                          <Zap className="w-4 h-4" />
+                          Commencer
+                        </button>
                       )}
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-4 h-4" />
-                        Créée le {new Date(mission.created_at).toLocaleDateString('fr-FR')}
-                      </span>
+                      {mission.status === 'in_progress' && (
+                        <button
+                          onClick={() => handleUpdateMissionStatus(mission.id, 'completed')}
+                          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                          Marquer comme terminée
+                        </button>
+                      )}
                     </div>
-                    
-                    {mission.status !== 'completed' && mission.status !== 'cancelled' && (
-                      <div className="flex items-center gap-2">
-                        {mission.status === 'assigned' && (
-                          <button
-                            onClick={() => handleUpdateMissionStatus(mission.id, 'in_progress')}
-                            className="px-3 py-1 bg-yellow-600 text-white rounded text-sm hover:bg-yellow-700 transition-colors"
-                          >
-                            Commencer
-                          </button>
-                        )}
-                        {mission.status === 'in_progress' && (
-                          <button
-                            onClick={() => handleUpdateMissionStatus(mission.id, 'completed')}
-                            className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 transition-colors"
-                          >
-                            Terminer
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -644,7 +743,10 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
   const renderActivities = () => (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <h2 className="text-2xl font-bold text-gray-900">Activités Locales</h2>
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Activités Locales</h2>
+          <p className="text-gray-600">Créez et gérez vos activités dans votre centre</p>
+        </div>
         <button
           onClick={() => {
             setModalType('activity');
@@ -678,12 +780,17 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
           ) : (
             <div className="space-y-4">
               {activities.map((activity) => (
-                <div key={activity.id} className="border border-gray-200 rounded-lg p-6">
+                <div key={activity.id} className="border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-gray-900">{activity.title}</h3>
-                      <p className="text-gray-600 mt-2">{activity.description}</p>
-                      <div className="flex items-center gap-4 mt-3 text-sm text-gray-500">
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="text-lg font-semibold text-gray-900">{activity.title}</h3>
+                        <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full capitalize">
+                          {activity.activity_type}
+                        </span>
+                      </div>
+                      <p className="text-gray-600 mb-3">{activity.description}</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm text-gray-500">
                         <span className="flex items-center gap-1">
                           <Calendar className="w-4 h-4" />
                           {new Date(activity.scheduled_date).toLocaleDateString('fr-FR')}
@@ -696,13 +803,15 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
                           <Users className="w-4 h-4" />
                           {activity.participants_count} participants
                         </span>
-                        <span className="capitalize">
-                          Type: {activity.activity_type}
+                        <span className="flex items-center gap-1">
+                          <User className="w-4 h-4" />
+                          {activity.target_audience}
                         </span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 ml-4">
                       <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${statusConfig[activity.status]?.bgColor} ${statusConfig[activity.status]?.color}`}>
+                        {React.createElement(statusConfig[activity.status]?.icon, { className: "w-4 h-4 mr-1" })}
                         {statusConfig[activity.status]?.label}
                       </span>
                       <button
@@ -711,19 +820,89 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
                           setModalType('activity');
                           setShowCreateModal(true);
                         }}
-                        className="p-2 text-blue-500 hover:text-blue-700 rounded-lg hover:bg-blue-50"
+                        className="p-2 text-blue-500 hover:text-blue-700 rounded-lg hover:bg-blue-50 transition-colors"
                       >
                         <Edit className="w-4 h-4" />
                       </button>
                     </div>
                   </div>
-                  
-                  {activity.target_audience && (
-                    <div className="mt-3 p-3 bg-gray-50 rounded-lg">
-                      <p className="text-sm font-medium text-gray-700">Public cible:</p>
-                      <p className="text-sm text-gray-600">{activity.target_audience}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderAssociations = () => (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Associations Locales</h2>
+          <p className="text-gray-600">Associations de votre centre - {agentInfo?.department}</p>
+        </div>
+        <div className="text-sm text-gray-600 bg-gray-100 px-3 py-2 rounded-lg">
+          {stats.localAssociations} associations • {stats.approvedAssociations} approuvées
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+        <div className="p-6">
+          {associations.length === 0 ? (
+            <div className="text-center py-12">
+              <Building className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-500">Aucune association dans votre centre</p>
+              <p className="text-sm text-gray-400 mt-2">Les associations apparaîtront ici une fois enregistrées</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {associations.map((association) => (
+                <div key={association.id} className="border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="text-lg font-semibold text-gray-900">{association.association_name}</h3>
+                        <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-medium rounded-full">
+                          {association.activity_sector}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm text-gray-500 mb-3">
+                        <span className="flex items-center gap-1">
+                          <FileText className="w-4 h-4" />
+                          N° {association.registration_number}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-4 h-4" />
+                          {new Date(association.registration_date).toLocaleDateString('fr-FR')}
+                        </span>
+                        {association.phone && (
+                          <span className="flex items-center gap-1">
+                            <Phone className="w-4 h-4" />
+                            {association.phone}
+                          </span>
+                        )}
+                      </div>
+                      {association.address && (
+                        <p className="text-sm text-gray-600 mb-2">
+                          <MapPin className="w-4 h-4 inline mr-1" />
+                          {association.address}
+                        </p>
+                      )}
+                      {association.user_profiles && (
+                        <p className="text-sm text-gray-500">
+                          Responsable: <span className="font-medium">{association.user_profiles.username}</span>
+                          {' '}(CIN: {association.user_profiles.user_id_or_registration})
+                        </p>
+                      )}
                     </div>
-                  )}
+                    <div className="flex items-center gap-2 ml-4">
+                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${statusConfig[association.status]?.bgColor} ${statusConfig[association.status]?.color}`}>
+                        {React.createElement(statusConfig[association.status]?.icon, { className: "w-4 h-4 mr-1" })}
+                        {statusConfig[association.status]?.label}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -736,7 +915,10 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
   const renderReports = () => (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <h2 className="text-2xl font-bold text-gray-900">Mes Rapports</h2>
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Mes Rapports</h2>
+          <p className="text-gray-600">Rapports envoyés à l'administration</p>
+        </div>
         <button
           onClick={() => {
             setModalType('report');
@@ -770,18 +952,38 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
           ) : (
             <div className="space-y-4">
               {reports.map((report) => (
-                <div key={report.id} className="border border-gray-200 rounded-lg p-6">
+                <div key={report.id} className="border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-gray-900">{report.title}</h3>
-                      <p className="text-gray-600 mt-1">Type: {reportTypes.find(t => t.value === report.report_type)?.label}</p>
-                      <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
-                        <span>Période: {new Date(report.period_start).toLocaleDateString('fr-FR')} - {new Date(report.period_end).toLocaleDateString('fr-FR')}</span>
-                        <span>Créé le {new Date(report.created_at).toLocaleDateString('fr-FR')}</span>
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="text-lg font-semibold text-gray-900">{report.title}</h3>
+                        <span className="px-2 py-1 bg-gray-100 text-gray-800 text-xs font-medium rounded-full">
+                          {reportTypes.find(t => t.value === report.report_type)?.label}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-4 mb-3 text-sm text-gray-500">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-4 h-4" />
+                          Période: {new Date(report.period_start).toLocaleDateString('fr-FR')} - {new Date(report.period_end).toLocaleDateString('fr-FR')}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-4 h-4" />
+                          Créé le {new Date(report.created_at).toLocaleDateString('fr-FR')}
+                        </span>
+                        {report.submitted_at && (
+                          <span className="flex items-center gap-1">
+                            <Send className="w-4 h-4" />
+                            Soumis le {new Date(report.submitted_at).toLocaleDateString('fr-FR')}
+                          </span>
+                        )}
+                      </div>
+                      <div className="bg-gray-50 rounded-lg p-3">
+                        <p className="text-sm text-gray-700 line-clamp-3">{report.content}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 ml-4">
                       <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${statusConfig[report.status]?.bgColor} ${statusConfig[report.status]?.color}`}>
+                        {React.createElement(statusConfig[report.status]?.icon, { className: "w-4 h-4 mr-1" })}
                         {statusConfig[report.status]?.label}
                       </span>
                       {report.status === 'draft' && (
@@ -790,14 +992,10 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
                           className="flex items-center gap-1 px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 transition-colors"
                         >
                           <Send className="w-3 h-3" />
-                          Soumettre
+                          Envoyer
                         </button>
                       )}
                     </div>
-                  </div>
-                  
-                  <div className="mt-3 p-3 bg-gray-50 rounded-lg">
-                    <p className="text-sm text-gray-700 line-clamp-3">{report.content}</p>
                   </div>
                 </div>
               ))}
@@ -857,6 +1055,8 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
         return renderMissions();
       case 'activities':
         return renderActivities();
+      case 'associations':
+        return renderAssociations();
       case 'reports':
         return renderReports();
       default:
@@ -867,7 +1067,10 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Chargement de votre espace agent...</p>
+        </div>
       </div>
     );
   }
@@ -931,7 +1134,7 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-900 truncate">{profile.username}</p>
-              <p className="text-xs text-gray-500 truncate">{user.email}</p>
+              <p className="text-xs text-gray-500 truncate">{agentInfo?.matricule}</p>
             </div>
           </div>
           <button
@@ -964,9 +1167,14 @@ export default function CDCAgentDashboard({ user, profile, onLogout }: CDCAgentD
               >
                 <Menu className="w-6 h-6" />
               </button>
-              <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-red-600 via-green-600 to-blue-600 bg-clip-text text-transparent">
-                {sidebarItems.find(item => item.id === activeTab)?.label || 'Tableau de bord'}
-              </h1>
+              <div>
+                <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-red-600 via-green-600 to-blue-600 bg-clip-text text-transparent">
+                  {sidebarItems.find(item => item.id === activeTab)?.label || 'Accueil'}
+                </h1>
+                {agentInfo && (
+                  <p className="text-sm text-gray-500">Centre: {agentInfo.department}</p>
+                )}
+              </div>
             </div>
             <div className="hidden sm:flex items-center gap-4">
               <button className="p-2 text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors">
@@ -1025,6 +1233,7 @@ const ActivityForm = ({ activity, onSubmit, onCancel }: any) => {
           value={formData.title}
           onChange={(e) => setFormData({ ...formData, title: e.target.value })}
           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+          placeholder="Ex: Formation en leadership jeunesse"
           required
         />
       </div>
@@ -1038,6 +1247,7 @@ const ActivityForm = ({ activity, onSubmit, onCancel }: any) => {
           onChange={(e) => setFormData({ ...formData, description: e.target.value })}
           rows={3}
           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+          placeholder="Décrivez l'objectif et le contenu de l'activité..."
         />
       </div>
 
@@ -1083,6 +1293,7 @@ const ActivityForm = ({ activity, onSubmit, onCancel }: any) => {
           value={formData.location}
           onChange={(e) => setFormData({ ...formData, location: e.target.value })}
           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+          placeholder="Ex: Centre CDC de Djibouti ville"
           required
         />
       </div>
@@ -1103,7 +1314,7 @@ const ActivityForm = ({ activity, onSubmit, onCancel }: any) => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Nombre de participants
+            Nombre de participants attendus
           </label>
           <input
             type="number"
@@ -1111,6 +1322,7 @@ const ActivityForm = ({ activity, onSubmit, onCancel }: any) => {
             onChange={(e) => setFormData({ ...formData, participants_count: parseInt(e.target.value) || 0 })}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
             min="0"
+            placeholder="0"
           />
         </div>
 
@@ -1179,6 +1391,7 @@ const ReportForm = ({ report, onSubmit, onCancel }: any) => {
           value={formData.title}
           onChange={(e) => setFormData({ ...formData, title: e.target.value })}
           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          placeholder="Ex: Rapport mensuel - Janvier 2024"
           required
         />
       </div>
@@ -1238,9 +1451,12 @@ const ReportForm = ({ report, onSubmit, onCancel }: any) => {
           onChange={(e) => setFormData({ ...formData, content: e.target.value })}
           rows={8}
           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          placeholder="Décrivez les activités réalisées, les résultats obtenus, les difficultés rencontrées..."
+          placeholder="Décrivez les activités réalisées, les résultats obtenus, les difficultés rencontrées, les recommandations..."
           required
         />
+        <p className="text-xs text-gray-500 mt-1">
+          Incluez: activités réalisées, nombre de participants, résultats obtenus, difficultés rencontrées, recommandations
+        </p>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-gray-200">
