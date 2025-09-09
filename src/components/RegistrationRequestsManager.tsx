@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useRef } from 'react';
 import { supabase, type PendingUser } from '../lib/supabase';
 import { 
   Users, 
@@ -51,23 +52,32 @@ export default function RegistrationRequestsManager({ user }: RegistrationReques
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRequest, setSelectedRequest] = useState<PendingUser | null>(null);
   const [showDetails, setShowDetails] = useState(false);
+  const subscriptionRef = useRef<any>(null);
 
   useEffect(() => {
     fetchPendingUsers();
     
     // Écouter les changements en temps réel
-    const subscription = supabase
-      .channel('pending_users_changes')
-      .on('postgres_changes', 
-        { event: '*', schema: 'public', table: 'pending_users' },
-        () => {
-          fetchPendingUsers();
-        }
-      )
-      .subscribe();
+    const setupSubscription = async () => {
+      const channel = supabase
+        .channel('pending_users_changes')
+        .on('postgres_changes', 
+          { event: '*', schema: 'public', table: 'pending_users' },
+          () => {
+            fetchPendingUsers();
+          }
+        );
+      
+      const subscription = await channel.subscribe();
+      subscriptionRef.current = subscription;
+    };
+    
+    setupSubscription();
 
     return () => {
-      subscription.unsubscribe();
+      if (subscriptionRef.current && typeof subscriptionRef.current.unsubscribe === 'function') {
+        subscriptionRef.current.unsubscribe();
+      }
     };
   }, []);
 
