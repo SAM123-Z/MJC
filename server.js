@@ -209,7 +209,110 @@ app.post("/verify-otp", (req, res) => {
   }
 });
 
-// --------- 3. Endpoint de santé ----------
+// --------- 3. Notification Admin pour nouvelles demandes ----------
+app.post("/send-admin-notification", async (req, res) => {
+  try {
+    const { type, adminEmail, userData } = req.body;
+    
+    if (!adminEmail || !userData) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Email admin et données utilisateur requis." 
+      });
+    }
+
+    const subject = `🔔 Nouvelle demande d'inscription - ${userData.userType} - ${userData.username}`;
+    
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Nouvelle Demande d'Inscription</title>
+      </head>
+      <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0;">
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="text-align: center; margin-bottom: 30px; background: linear-gradient(135deg, #dc2626, #16a34a, #2563eb); padding: 20px; border-radius: 12px;">
+            <h1 style="color: white; margin: 0; font-size: 24px;">MINJEC - Nouvelle Demande</h1>
+            <p style="color: white; margin: 10px 0 0 0; opacity: 0.9;">Système de Gestion des Inscriptions</p>
+          </div>
+          
+          <div style="background: #f8fafc; padding: 25px; border-radius: 12px; border-left: 4px solid #2563eb; margin-bottom: 25px;">
+            <h2 style="color: #1d4ed8; margin: 0 0 20px 0; font-size: 20px;">📋 Détails de la demande</h2>
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="padding: 8px 0; font-weight: bold; color: #374151; width: 40%;">Nom d'utilisateur:</td>
+                <td style="padding: 8px 0; color: #111827;">${userData.username}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; font-weight: bold; color: #374151;">Email:</td>
+                <td style="padding: 8px 0; color: #111827;">${userData.email}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; font-weight: bold; color: #374151;">Type d'utilisateur:</td>
+                <td style="padding: 8px 0; color: #111827;">
+                  <span style="background: #dbeafe; color: #1d4ed8; padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: bold;">
+                    ${userData.userType}
+                  </span>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; font-weight: bold; color: #374151;">CIN National:</td>
+                <td style="padding: 8px 0; color: #111827; font-family: monospace;">${userData.userIdOrRegistration}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; font-weight: bold; color: #374151;">Date de soumission:</td>
+                <td style="padding: 8px 0; color: #111827;">${userData.submissionDate}</td>
+              </tr>
+            </table>
+          </div>
+          
+          <div style="text-align: center; margin: 30px 0;">
+            <p style="color: #374151; margin: 0 0 15px 0;">
+              🔔 <strong>Action requise :</strong> Connectez-vous à l'interface d'administration pour traiter cette demande.
+            </p>
+            <a href="${process.env.ADMIN_PANEL_URL || 'http://localhost:5173'}" 
+               style="display: inline-block; background: linear-gradient(135deg, #dc2626, #16a34a, #2563eb); color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+              🔍 Traiter la demande
+            </a>
+          </div>
+          
+          <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+            <p style="color: #6b7280; font-size: 14px; margin: 0;">
+              📧 admin@minjec.gov.dj | 📞 +253 21 35 26 14<br>
+              Ministère de la Jeunesse et de la Culture - République de Djibouti
+            </p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    // Envoyer l'email de notification
+    await transporter.sendMail({
+      from: `"MINJEC Admin" <${process.env.EMAIL_USER}>`,
+      to: adminEmail,
+      subject: subject,
+      html: htmlContent,
+    });
+
+    console.log(`✅ Notification admin envoyée pour: ${userData.username} (${userData.userType})`);
+
+    res.json({ 
+      success: true, 
+      message: "Notification admin envoyée avec succès !",
+      pendingId: userData.pendingId
+    });
+  } catch (error) {
+    console.error("❌ Erreur lors de l'envoi de la notification admin:", error);
+    res.status(500).json({ 
+      success: false, 
+      message: "Erreur lors de l'envoi de la notification admin." 
+    });
+  }
+});
+
+// --------- 4. Endpoint de santé ----------
 app.get("/health", (req, res) => {
   res.json({
     status: "OK",
@@ -220,7 +323,7 @@ app.get("/health", (req, res) => {
   });
 });
 
-// --------- 4. Endpoint pour les statistiques (développement) ----------
+// --------- 5. Endpoint pour les statistiques (développement) ----------
 if (process.env.NODE_ENV !== 'production') {
   app.get("/stats", (req, res) => {
     const stats = {
@@ -236,7 +339,7 @@ if (process.env.NODE_ENV !== 'production') {
   });
 }
 
-// --------- 5. Gestion des erreurs ----------
+// --------- 6. Gestion des erreurs ----------
 app.use((err, req, res, next) => {
   console.error("❌ Erreur non gérée:", err);
   res.status(500).json({
@@ -245,7 +348,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// --------- 6. Gestion des routes non trouvées ----------
+// --------- 7. Gestion des routes non trouvées ----------
 app.use("*", (req, res) => {
   res.status(404).json({
     success: false,
@@ -253,7 +356,7 @@ app.use("*", (req, res) => {
   });
 });
 
-// --------- 7. Lancement serveur ----------
+// --------- 8. Lancement serveur ----------
 app.listen(PORT, () => {
   console.log(`🚀 Microservice OTP lancé sur http://localhost:${PORT}`);
   console.log(`📧 Service email: ${process.env.EMAIL_USER ? 'Configuré' : 'Non configuré'}`);
