@@ -16,7 +16,7 @@ app.use(cors());
 const otpStore = new Map();
 
 // Config Nodemailer (Gmail)
-const transporter = nodemailer.createTransporter({
+const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
     user: process.env.EMAIL_USER,
