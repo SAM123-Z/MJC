@@ -84,15 +84,43 @@ export default function RegistrationRequestsManager({ user }: RegistrationReques
   const fetchPendingUsers = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('pending_users')
-        .select('*')
-        .order('created_at', { ascending: false });
+      
+      // Try to fetch pending users with error handling for RLS recursion
+      let data = null;
+      let error = null;
+      
+      try {
+        const result = await supabase
+          .from('pending_users')
+          .select('*')
+          .order('created_at', { ascending: false });
+        
+        data = result.data;
+        error = result.error;
+      } catch (fetchError: any) {
+        // Handle RLS recursion error specifically
+        if (fetchError.message?.includes('infinite recursion') || 
+            fetchError.message?.includes('42P17')) {
+          console.error('RLS Policy recursion detected. Please check your Supabase policies.');
+          // Set empty data to prevent app crash
+          data = [];
+          error = null;
+        } else {
+          throw fetchError;
+        }
+      }
 
       if (error) throw error;
       setPendingUsers(data || []);
     } catch (error) {
       console.error('Erreur lors du chargement des demandes:', error);
+      // Set empty array to prevent app crash
+      setPendingUsers([]);
+      
+      // Show user-friendly error message
+      if (error instanceof Error && error.message?.includes('infinite recursion')) {
+        alert('Erreur de configuration de la base de données. Veuillez contacter l\'administrateur système.');
+      }
     } finally {
       setLoading(false);
     }

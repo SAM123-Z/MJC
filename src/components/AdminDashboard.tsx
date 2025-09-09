@@ -328,15 +328,36 @@ export default function AdminDashboard({ user, profile, onLogout }: AdminDashboa
 
   const fetchPendingUsers = async () => {
     try {
-      const { data } = await supabase
-        .from('pending_users')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // Try to fetch pending users with error handling for RLS recursion
+      let data = null;
+      
+      try {
+        const result = await supabase
+          .from('pending_users')
+          .select('*')
+          .order('created_at', { ascending: false });
+        
+        data = result.data;
+        if (result.error) throw result.error;
+      } catch (fetchError: any) {
+        // Handle RLS recursion error specifically
+        if (fetchError.message?.includes('infinite recursion') || 
+            fetchError.message?.includes('42P17')) {
+          console.error('RLS Policy recursion detected. Please check your Supabase policies.');
+          // Set empty data to prevent app crash
+          data = [];
+        } else {
+          throw fetchError;
+        }
+      }
 
       setPendingUsers(data || []);
       setPendingCount(data?.filter(u => u.status === 'pending').length || 0);
     } catch (error) {
       console.error('Error fetching pending users:', error);
+      // Set empty arrays to prevent app crash
+      setPendingUsers([]);
+      setPendingCount(0);
     }
   };
 
