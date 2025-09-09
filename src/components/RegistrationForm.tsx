@@ -166,26 +166,24 @@ export default function RegistrationForm({ onBackToLogin }: RegistrationFormProp
 
       // Envoyer notification immédiate à l'admin
       try {
-        // Générer un token de sécurité pour les liens d'approbation
-        const securityToken = await generateSecurityToken(pendingUserData.id)
-        
         const selectedOption = userTypeOptions.find(option => option.value === selectedUserType);
         
-        await supabase.functions.invoke('send-notification-email', {
-          body: {
-            type: 'admin_notification',
-            to: 'admin@minjec.gov.dj',
-            data: {
+        // Envoyer notification à l'admin via le microservice OTP
+        await fetch('http://localhost:3000/send-admin-notification', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'new_registration',
+            adminEmail: 'admin@minjec.gov.dj',
+            userData: {
               username: data.username,
               email: data.email,
               userType: selectedOption?.label || selectedUserType,
               userIdOrRegistration: data.userIdOrRegistration,
               submissionDate: new Date().toLocaleDateString('fr-FR'),
-              adminPanelUrl: window.location.origin + '/admin/requests',
-              pendingId: pendingUserData.id,
-              securityToken: securityToken
+              pendingId: pendingUserData.id
             }
-          }
+          })
         });
       } catch (emailError) {
         console.error('Erreur lors de l\'envoi de la notification:', emailError);
@@ -211,15 +209,6 @@ export default function RegistrationForm({ onBackToLogin }: RegistrationFormProp
       setIsLoading(false);
     }
   };
-
-  // Fonction pour générer un token de sécurité
-  const generateSecurityToken = async (pendingId: string): Promise<string> => {
-    const data = `${pendingId}-${Date.now()}`
-    const encoder = new TextEncoder()
-    const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(data))
-    const hashArray = Array.from(new Uint8Array(hashBuffer))
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16)
-  }
   // Contact Information Component
   const ContactInfo = () => (
     <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
