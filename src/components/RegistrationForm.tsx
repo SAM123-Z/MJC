@@ -163,22 +163,14 @@ export default function RegistrationForm({ onBackToLogin }: RegistrationFormProp
       try {
         const selectedOption = userTypeOptions.find(option => option.value === selectedUserType);
         
-        // Envoyer notification à l'admin via le microservice OTP
-        await fetch('http://localhost:3001/send-admin-notification', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'new_registration',
-            adminEmail: 'admin@minjec.gov.dj',
-            userData: {
-              username: data.username,
-              email: data.email,
-              userType: selectedOption?.label || selectedUserType,
-              userIdOrRegistration: data.userIdOrRegistration,
-              submissionDate: new Date().toLocaleDateString('fr-FR'),
-              pendingId: pendingUserData.id
-            }
-          })
+        // TODO: Implémenter la notification admin via Supabase Edge Function
+        console.log('Nouvelle demande d\'inscription soumise:', {
+          username: data.username,
+          email: data.email,
+          userType: selectedOption?.label || selectedUserType,
+          userIdOrRegistration: data.userIdOrRegistration,
+          submissionDate: new Date().toLocaleDateString('fr-FR'),
+          pendingId: pendingUserData.id
         });
       } catch (emailError) {
         console.error('Erreur lors de l\'envoi de la notification:', emailError);
