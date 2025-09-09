@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { supabase, type UserType } from '../lib/supabase';
+import { type UserType } from '../lib/supabase';
+import { api } from '../lib/api';
 import { 
   User, 
   Shield, 
@@ -149,26 +150,14 @@ export default function RegistrationForm({ onBackToLogin }: RegistrationFormProp
       additionalInfo.password = data.password;
 
       // Créer la demande d'approbation directement via Supabase
-      const { data: pendingUserData, error } = await supabase
-        .from('pending_users')
-        .insert({
-          email: data.email,
-          username: data.username,
-          user_type: selectedUserType,
-          user_id_or_registration: data.userIdOrRegistration,
-          additional_info: additionalInfo,
-          status: 'pending'
-        })
-        .select()
-        .single();
-
-      if (error) {
-        throw new Error(`Erreur lors de la création de la demande: ${error.message}`);
-      }
-
-      if (!pendingUserData) {
-        throw new Error('Erreur lors de la création de la demande: données non retournées');
-      }
+      const pendingUserData = await api.registration.create({
+        email: data.email,
+        username: data.username,
+        user_type: selectedUserType,
+        user_id_or_registration: data.userIdOrRegistration,
+        additional_info: additionalInfo,
+        status: 'pending'
+      });
 
       // Envoyer notification immédiate à l'admin
       try {
