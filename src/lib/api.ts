@@ -1,5 +1,12 @@
 import { supabase } from './supabase';
 
+// Vérification de la connexion Supabase
+if (!supabase) {
+  throw new Error('Client Supabase non initialisé')
+}
+
+console.log('🔗 API Client initialisé avec Supabase')
+
 // Configuration de base pour les APIs
 const API_BASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
